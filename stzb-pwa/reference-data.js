@@ -35,5 +35,12 @@ const raw={
 const tactics=Object.fromEntries(Object.entries(raw).map(([name,[type,effect,description,numbers,status]])=>[name,{type,effect,description,numbers,status,source:'https://www.jsoner.cn/gamehub/stzb/'}]));
 const heroNames='夏侯惇XP,獻帝,十常侍,呂布,蔡文姬,貂蟬,袁紹,盧植,張角,董卓,賈詡,馬超,甄洛,劉備,諸葛亮,趙雲,張飛,曹操,荀彧,曹丕,關羽,張遼,王異,張春華,孫權,周瑜,周姬,孫堅,甘寧,呂蒙,孫尚香,何太后,王美人,皇甫嵩,朱儁,張奐,鮑信,董姬,嚴氏,法正,太史慈,靈帝,黃月英,陸遜,周泰,陸抗,祝融夫人,馬雲祿,郭嘉,張寧,張梁,司馬懿,龐統,姜維,黃忠,馬岱,馬良,魏延,曹純,張繡,木鹿大王,卞夫人,郝昭,張機,陳宮,沮授,公孫瓚,高順,張郃,許褚,典韋,徐晃,夏侯惇,夏侯淵,郭皇后,大喬,小喬,魯肅,程普,孫策,凌統,朱然,孫魯班,陳到,關銀屏,徐庶,馬謖,張任,顏良,文醜,田豐,華雄,李儒,華佗,于吉,左慈,張寶'.split(',');
 const heroes=Object.fromEntries(heroNames.map(name=>[name,{level:40,attack:null,defense:null,strategy:null,speed:null,siege:null,source:null,status:'待核對'}]));
-root.STZBReference={heroes,tactics,notice:'武將40級實際屬性依卡片版本、星級、進階、配點、兵種與賽季可能不同；未取得可靠數據時不顯示假數值。戰法參考值非台服現行保證值。'};
+// Public historical reference cards. Distinguish same-name variants by faction and rarity.
+const growthCards=[
+{name:'曹操',variant:'魏·五星·騎',initial:{attack:80,defense:107,strategy:90,speed:88,siege:6},growth:{attack:1.28,defense:2.95,strategy:1.59,speed:1.26,siege:1.40},source:'https://www.juxia.com/sjwy/zixun-24638.html',status:'公開歷史資料，台服版本未核對'},
+{name:'孫堅',variant:'吳·五星·騎',initial:{attack:89,defense:93,strategy:67,speed:86,siege:4},growth:{attack:1.29,defense:1.09,strategy:0.61,speed:1.13,siege:0.25},source:'https://kknews.cc/game/686yr3l.html',status:'2016年公開歷史資料，台服版本未核對'}
+];
+const calculateAtLevel=(card,level=40)=>Object.fromEntries(Object.keys(card.initial).map(key=>[key,Math.round((card.initial[key]+(level-1)*card.growth[key])*100)/100]));
+for(const card of growthCards){if(heroes[card.name])heroes[card.name]={...heroes[card.name],...calculateAtLevel(card,40),variant:card.variant,initial:card.initial,growth:card.growth,source:card.source,status:card.status};}
+root.STZBReference={heroes,tactics,growthCards,calculateAtLevel,notice:'武將40級實際屬性依卡片版本、星級、進階、配點、兵種與賽季可能不同；未取得可靠數據時不顯示假數值。戰法參考值非台服現行保證值。'};
 })(window);

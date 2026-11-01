@@ -1,3 +1,4 @@
+import{weather}from'./weather.mjs';
 import{validateConfig,ruleDecisions}from'./config.mjs';
 import{defs,evaluate,extract,direction,finite}from'./engine.mjs';
 import{sendPush,validateSubscription,pushSelfCheck}from'./push.mjs';
@@ -29,7 +30,6 @@ export async function flushOutbox(env,fetcher=fetch){
  await run(db,"UPDATE coop_events SET status=CASE WHEN EXISTS(SELECT 1 FROM coop_outbox o WHERE o.event_id=coop_events.id AND o.status='accepted') THEN 'accepted' WHEN EXISTS(SELECT 1 FROM coop_outbox o WHERE o.event_id=coop_events.id AND o.status IN ('queued','retry')) THEN 'queued' ELSE 'failed' END WHERE status='queued'");
  return totals;
 }
-async function weather(site,fetcher){const q=new URLSearchParams({latitude:site.lat,longitude:site.lon,current:'temperature_2m,wind_speed_10m,wind_direction_10m,apparent_temperature,weather_code',hourly:'precipitation_probability',timezone:'Asia/Taipei',timeformat:'unixtime',wind_speed_unit:'ms',forecast_days:'2'});const r=await fetcher('https://api.open-meteo.com/v1/forecast?'+q,{signal:AbortSignal.timeout(15000)});if(!r.ok)throw Error('氣象服務暫時無法使用');const v=extract(await r.json());if(!finite(v.time)||Date.now()/1000-v.time>7200)throw Error('氣象資料已過期');return v}
 export async function monitor(env,{userId=null,force=false,fetcher=fetch}={}){
  const db=env.DB,now=Date.now();const lockKey='monitor',lease=crypto.randomUUID();
  const lock=await stmt(db,'INSERT INTO coop_runtime (id,value,lock_until) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value,lock_until=excluded.lock_until WHERE coop_runtime.lock_until<? RETURNING id',lockKey,lease,now+300000,now).first();if(!lock)return{busy:true};

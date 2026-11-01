@@ -1,0 +1,13 @@
+package tw.sunnycoop.widget;
+import android.app.job.*;import android.content.SharedPreferences;import org.json.*;import javax.net.ssl.HttpsURLConnection;import java.net.URL;import java.nio.charset.StandardCharsets;import java.io.*;
+public class WeatherJob extends JobService {
+ private Thread thread;private volatile boolean cancelled;
+ public boolean onStartJob(JobParameters params){cancelled=false;thread=new Thread(()->{try{SharedPreferences p=CoopWidget.prefs(this);String lat=p.getString("lat","23.924"),lon=p.getString("lon","120.32"),signature=lat+","+lon;
+ String endpoint="https://api.open-meteo.com/v1/forecast?latitude="+lat+"&longitude="+lon+"&current=temperature_2m,wind_speed_10m,wind_direction_10m&hourly=precipitation_probability&wind_speed_unit=ms&timeformat=unixtime&timezone=Asia%2FTaipei&forecast_days=2";
+ HttpsURLConnection conn=(HttpsURLConnection)new URL(endpoint).openConnection();conn.setConnectTimeout(15000);conn.setReadTimeout(15000);conn.setInstanceFollowRedirects(false);String text;try{if(conn.getResponseCode()!=200)throw new IOException("天氣服務暫時無法使用");try(InputStream in=conn.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] buf=new byte[4096];int n,total=0;while((n=in.read(buf))!=-1){total+=n;if(total>262144)throw new IOException("資料過大");out.write(buf,0,n);}text=out.toString(StandardCharsets.UTF_8.name());}}finally{conn.disconnect();}
+ JSONObject json=new JSONObject(text),cur=json.getJSONObject("current"),hour=json.getJSONObject("hourly");long now=System.currentTimeMillis()/1000,source=cur.getLong("time");if(now-source>7200)throw new IOException("來源資料已過期");JSONArray times=hour.getJSONArray("time"),probs=hour.getJSONArray("precipitation_probability");int idx=-1;for(int i=0;i<times.length();i++)if(times.getLong(i)>now){idx=i;break;}if(idx<0)throw new IOException("缺少預報");
+ JSONObject snapshot=new JSONObject().put("source",source).put("temp",cur.opt("temperature_2m")).put("wind",cur.opt("wind_speed_10m")).put("dir",cur.opt("wind_direction_10m")).put("rain",probs.opt(idx));
+ if(!cancelled&&signature.equals(p.getString("lat","23.924")+","+p.getString("lon","120.32")))p.edit().putString("snapshot",snapshot.toString()).putLong("fetched",System.currentTimeMillis()).putString("error","").apply();
+ }catch(Exception e){if(!cancelled)CoopWidget.prefs(this).edit().putString("error","更新失敗").apply();}finally{if(!cancelled){CoopWidget.render(this);jobFinished(params,false);}}},"coop-weather");thread.start();return true;}
+ public boolean onStopJob(JobParameters p){cancelled=true;if(thread!=null)thread.interrupt();return true;}
+}

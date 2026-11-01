@@ -1,0 +1,17 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/widget_root" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:background="@drawable/widget_bg">
+ <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
+  <TextView android:id="@+id/site" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="芳苑一場" android:textColor="#FFFFFF" android:textSize="15sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end"/>
+  <TextView android:id="@+id/refresh" android:layout_width="48dp" android:layout_height="36dp" android:gravity="center" android:text="↻" android:textColor="#FFFFFF" android:textSize="23sp" android:contentDescription="更新天氣"/>
+ </LinearLayout>
+ <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center_vertical">
+  <TextView android:id="@+id/temp" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="—°C" android:textColor="#FFFFFF" android:textSize="34sp" android:maxLines="1" android:autoSizeTextType="uniform" android:autoSizeMinTextSize="22sp" android:autoSizeMaxTextSize="34sp"/>
+  <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="vertical">
+   <TextView android:id="@+id/wind" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="風向 — · 風速 —" android:textColor="#FFFFFF" android:textSize="12sp"/>
+   <TextView android:id="@+id/rain" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="下小時降雨 —%" android:textColor="#FFFFFF" android:textSize="12sp" android:layout_marginTop="5dp"/>
+  </LinearLayout>
+ </LinearLayout>
+ <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
+  <TextView android:id="@+id/status" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="等待資料" android:textColor="#BBBBBB" android:textSize="10sp" android:maxLines="1" android:ellipsize="end"/>
+  <TextView android:id="@+id/updated" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="尚未更新" android:textColor="#BBBBBB" android:textSize="9sp"/>
+ </LinearLayout>
+</LinearLayout>

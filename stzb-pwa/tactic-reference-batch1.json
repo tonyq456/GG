@@ -1,0 +1,55 @@
+{
+  "schema": "experimental-tactic-reference-v1",
+  "source": "https://jsoner.cn/gamehub/stzb/zhanfa/",
+  "warning": "中國攻略站參考值，不代表台服現行戰法數值；尚未接入戰鬥引擎",
+  "tactics": [
+    {
+      "name": "戰必斷金",
+      "type": "指揮",
+      "target": "敵軍群體2",
+      "turns": "前3回合",
+      "effect": "每回合90%機率怯戰",
+      "activate": null
+    },
+    {
+      "name": "大賞三軍",
+      "type": "指揮",
+      "target": "我軍群體2",
+      "turns": "前3回合",
+      "effect": "提高攻擊及策略攻擊傷害",
+      "basePercent": 30,
+      "affectedBy": "謀略"
+    },
+    {
+      "name": "河內世澤",
+      "type": "主動",
+      "target": "敵軍群體1-2",
+      "activateRangePercent": [
+        25,
+        35
+      ],
+      "effect": "隨機發動兩組不同戰法，跳過準備回合",
+      "range": 4
+    },
+    {
+      "name": "桃園結義",
+      "type": "指揮",
+      "target": "單體",
+      "healRatioPercent": 160,
+      "magicRatioPercent": 120,
+      "phases": [
+        "1-4回合恢復",
+        "5-8回合策略攻擊"
+      ],
+      "extra": "同陣營三人時第5回合起前鋒中軍輪流援護"
+    },
+    {
+      "name": "楚歌四起",
+      "type": "主動",
+      "activatePercent": 50,
+      "prepTurns": 1,
+      "effect": "恐慌2回合",
+      "ratioPercent": 127
+    }
+  ]
+}

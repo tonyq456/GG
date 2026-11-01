@@ -91,7 +91,25 @@ function finishMapDrag(e,cancelled=false){
 map.onpointerup=e=>finishMapDrag(e);map.onpointercancel=e=>finishMapDrag(e,true);map.onlostpointercapture=e=>finishMapDrag(e,true);
 $('#zoomIn').onclick=()=>{zoom=Math.min(18,zoom+1);renderMap()};$('#zoomOut').onclick=()=>{zoom=Math.max(3,zoom-1);renderMap()};new ResizeObserver(()=>{if(!drag)renderMap()}).observe(map);
 ['latitude','longitude'].forEach(id=>$('#'+id).onchange=()=>{if(!$('#latitude').checkValidity()||!$('#longitude').checkValidity())return;center={lat:Number($('#latitude').value),lon:Number($('#longitude').value)};renderMap()});$('#locateBtn').onclick=()=>{if(!navigator.geolocation)return toast('此瀏覽器不支援定位，請在地圖選點');navigator.geolocation.getCurrentPosition(p=>{center={lat:p.coords.latitude,lon:p.coords.longitude};zoom=14;mapInputs();renderMap();toast('已選取目前位置，請命名並儲存')},()=>toast('定位未成功，請開啟權限或直接選點'),{timeout:10000})};$('#placeForm').onsubmit=e=>{e.preventDefault();const name=$('#placeName').value.trim();if(!name)return toast('請輸入場區名稱');const s={id:crypto.randomUUID(),name,lat:Number($('#latitude').value),lon:Number($('#longitude').value)};state.sites.push(s);$('#placeName').value='';selectSite(s.id);toast('場區已新增');show('overview')};
-window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e});$('#installBtn').onclick=async()=>{if(installPrompt){await installPrompt.prompt();installPrompt=null}else $('#installDialog').showModal()};$('#closeInstall').onclick=()=>$('#installDialog').close();if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').then(r=>sw=r).catch(()=>{});
+let serviceWorkerIssue='';
+const isInstalled=()=>window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+function updateInstallState(){
+ const installed=isInstalled();$('#installNativeBtn').hidden=installed||!installPrompt;
+ $('#installStatus').textContent=installed?'晴舍目前正以獨立 App 模式開啟，無須重複安裝。':installPrompt?'瀏覽器已提供安裝選項，請按下方「安裝晴舍」。':'目前瀏覽器未提供自動安裝提示。可以使用 Chrome 選單建立桌面捷徑。';
+ $('#installUrl').value=location.origin+'/index.html';
+ $('#installDiagnostics').textContent='安全連線：'+(window.isSecureContext?'正常':'未啟用')+'｜背景服務：'+(!('serviceWorker'in navigator)?'此瀏覽器不支援':serviceWorkerIssue?'註冊失敗，請重新登入後重試':'檢查中…');
+ if('serviceWorker'in navigator)navigator.serviceWorker.getRegistration().then(r=>{$('#installDiagnostics').textContent='安全連線：'+(window.isSecureContext?'正常':'未啟用')+'｜背景服務：'+(r?.active?'已就緒':r?'安裝中，請稍後再試':serviceWorkerIssue?'註冊失敗，請重新登入後重試':'尚未就緒，請重新整理')}).catch(()=>{});
+}
+async function nativeInstall(){
+ if(!installPrompt)return updateInstallState();const prompt=installPrompt;installPrompt=null;
+ try{await prompt.prompt();const choice=await prompt.userChoice;toast(choice.outcome==='accepted'?'已接受安裝請求，請確認桌面或應用程式列表。':'已取消安裝，可改用 Chrome 選單建立捷徑。')}catch{toast('瀏覽器未完成安裝。請用 Chrome 選單建立捷徑。')}finally{updateInstallState()}
+}
+async function openInstall(){updateInstallState();if(!$('#installDialog').open)$('#installDialog').showModal();if(installPrompt&&!isInstalled())await nativeInstall()}
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;if($('#installDialog').open)updateInstallState()});
+window.addEventListener('appinstalled',()=>{installPrompt=null;updateInstallState();toast('瀏覽器回報安裝完成，請查看手機桌面或應用程式列表。')});
+$('#installBtn').onclick=openInstall;$('#installQuickBtn').onclick=openInstall;$('#installNativeBtn').onclick=nativeInstall;$('#closeInstall').onclick=()=>$('#installDialog').close();
+$('#copyInstallUrl').onclick=async()=>{try{await navigator.clipboard.writeText($('#installUrl').value);toast('網址已複製，請貼到手機 Chrome 網址列。')}catch{$('#installUrl').focus();$('#installUrl').select();toast('請長按網址，選擇複製。')}};
+if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js',{scope:'/'}).then(r=>{sw=r;if($('#installDialog').open)updateInstallState()}).catch(e=>{serviceWorkerIssue=e.name||'註冊失敗';if($('#installDialog').open)updateInstallState()});
 setInterval(()=>{$('#clock').textContent=dateText(Date.now(),{weekday:'short'});renderStatus()},60000);$('#clock').textContent=dateText(Date.now(),{weekday:'short'});setInterval(fetchWeather,600000);document.addEventListener('visibilitychange',()=>{if(!document.hidden&&Date.now()-received>600000)fetchWeather()});renderSites();renderRules();renderLogs();renderWeather();fetchWeather();
 
 export{state,save,toast,renderRules,renderWeather,renderSites};

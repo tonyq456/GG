@@ -56,3 +56,5 @@ pnpm run build
 ## 資料來源與限制
 
 Open-Meteo（https://open-meteo.com/）提供戶外模式估算與預報，不是雞舍內實測。正式商用前須確認資料使用條款與額度。臺灣地圖由國土測繪中心 WMTS（https://maps.nlsc.gov.tw/）提供。天氣請求會傳送所選座標至 Open-Meteo。門檻範例不屬於養殖建議，預設皆關閉。伺服器通知紀錄保留 30 天，畫面顯示最近紀錄；本機紀錄最多 200 筆。
+
+4×2 Android 桌面小工具原始碼另見 GitHub `sunny-coop/android/`；網頁與小工具均不提供濕度欄位或濕度警戒。

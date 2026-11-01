@@ -2,7 +2,7 @@ import{validateConfig,ruleDecisions}from'./config.mjs';
 import{defs,evaluate,extract,direction,finite}from'./engine.mjs';
 import{sendPush,validateSubscription}from'./push.mjs';
 const json=(v,status=200)=>new Response(JSON.stringify(v),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}});
-const names={...Object.fromEntries(defs.map(d=>[d.id,d.name])),combo:'高溫＋高濕',direction:'迎風提醒'};
+const names={...Object.fromEntries(defs.map(d=>[d.id,d.name])),direction:'迎風提醒'};
 const format=v=>finite(v)?String(Math.round(v*10)/10):'缺值';
 const stmt=(db,q,...args)=>db.prepare(q).bind(...args);
 const run=(db,q,...args)=>stmt(db,q,...args).run();
@@ -29,17 +29,21 @@ export async function flushOutbox(env,fetcher=fetch){
  await run(db,"UPDATE coop_events SET status=CASE WHEN EXISTS(SELECT 1 FROM coop_outbox o WHERE o.event_id=coop_events.id AND o.status='accepted') THEN 'accepted' WHEN EXISTS(SELECT 1 FROM coop_outbox o WHERE o.event_id=coop_events.id AND o.status IN ('queued','retry')) THEN 'queued' ELSE 'failed' END WHERE status='queued'");
  return totals;
 }
-async function weather(site,fetcher){const q=new URLSearchParams({latitude:site.lat,longitude:site.lon,current:'temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,apparent_temperature,weather_code',hourly:'precipitation_probability',timezone:'Asia/Taipei',timeformat:'unixtime',wind_speed_unit:'ms',forecast_days:'2'});const r=await fetcher('https://api.open-meteo.com/v1/forecast?'+q,{signal:AbortSignal.timeout(15000)});if(!r.ok)throw Error('氣象服務暫時無法使用');const v=extract(await r.json());if(!finite(v.time)||Date.now()/1000-v.time>7200)throw Error('氣象資料已過期');return v}
+async function weather(site,fetcher){const q=new URLSearchParams({latitude:site.lat,longitude:site.lon,current:'temperature_2m,wind_speed_10m,wind_direction_10m,apparent_temperature,weather_code',hourly:'precipitation_probability',timezone:'Asia/Taipei',timeformat:'unixtime',wind_speed_unit:'ms',forecast_days:'2'});const r=await fetcher('https://api.open-meteo.com/v1/forecast?'+q,{signal:AbortSignal.timeout(15000)});if(!r.ok)throw Error('氣象服務暫時無法使用');const v=extract(await r.json());if(!finite(v.time)||Date.now()/1000-v.time>7200)throw Error('氣象資料已過期');return v}
 export async function monitor(env,{userId=null,force=false,fetcher=fetch}={}){
  const db=env.DB,now=Date.now();const lockKey='monitor',lease=crypto.randomUUID();
  const lock=await stmt(db,'INSERT INTO coop_runtime (id,value,lock_until) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value,lock_until=excluded.lock_until WHERE coop_runtime.lock_until<? RETURNING id',lockKey,lease,now+300000,now).first();if(!lock)return{busy:true};
  let checked=0,errors=0;try{
+ // Retire legacy saved humidity rules and queued messages without touching other thresholds.
+ await run(db,"UPDATE coop_monitors SET config=json_remove(config,'$.rules.humidity','$.combo') WHERE json_type(config,'$.rules.humidity') IS NOT NULL OR json_type(config,'$.combo') IS NOT NULL");
+ await run(db,"UPDATE coop_outbox SET status='cancelled' WHERE status IN ('queued','retry') AND event_id IN (SELECT id FROM coop_events WHERE title LIKE '%高濕%' OR body LIKE '%濕度%')");
+ await run(db,"UPDATE coop_events SET status='cancelled' WHERE status='queued' AND (title LIKE '%高濕%' OR body LIKE '%濕度%')");
  const configs=(await stmt(db,'SELECT * FROM coop_monitors WHERE enabled=1'+(userId?' AND user_id=?':'')+' LIMIT 20',...(userId?[userId]:[])).all()).results;
  for(const row of configs){if(!force&&row.last_run&&now-row.last_run<3000000)continue;const c=validateConfig(JSON.parse(row.config)),observations=[];let lastError=null;
  for(const site of c.sites){try{
   const v=await weather(site,fetcher),results=evaluate(v,c),prefix=row.user_id+':'+site.id+':';const previous={};const saved=(await stmt(db,'SELECT * FROM coop_rule_states WHERE user_id=?',row.user_id).all()).results;for(const old of saved)if(old.id.startsWith(prefix))previous[old.id.slice(prefix.length)]=old;
   const decisions=ruleDecisions(results,previous,now,c.cooldown*60000,now<c.pauseUntil);
-  const body=`${site.name}｜戶外 ${format(v.temp)}°C、濕度 ${format(v.humidity)}%、${direction(v.direction)}風 ${format(v.wind)} m/s、下一小時降雨機率 ${format(v.rain)}%。`;
+  const body=`${site.name}｜戶外 ${format(v.temp)}°C、${direction(v.direction)}風 ${format(v.wind)} m/s、下一小時降雨機率 ${format(v.rain)}%。`;
   const batches=decisions.changes.map(s=>stmt(db,'INSERT INTO coop_rule_states(id,user_id,active,last_queued) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET active=excluded.active,last_queued=excluded.last_queued',prefix+s.key,row.user_id,s.active,s.last_queued));
   if(decisions.alerts.length)await queueEvent(db,row.user_id,'alert',decisions.alerts.map(k=>names[k]).join('、'),body,c,now);
   if(decisions.recoveries.length)await queueEvent(db,row.user_id,'recovery','恢復正常：'+decisions.recoveries.map(k=>names[k]).join('、'),site.name+'：最新資料已未達上述警戒門檻。',c,now);
@@ -74,7 +78,7 @@ export async function route(request,env,ctx){
   const recent=(await stmt(env.DB,'SELECT id,kind,title,body,created_at,status FROM coop_events WHERE user_id=? ORDER BY created_at DESC LIMIT 100',user).all()).results;
   const schedule=await stmt(env.DB,"SELECT value FROM coop_runtime WHERE id='schedule'").first();
   const beat=await stmt(env.DB,"SELECT value FROM coop_runtime WHERE id='heartbeat'").first();
-  return json({enabled:!!row?.enabled,config:row?JSON.parse(row.config):null,lastRun:row?.last_run??null,error:row?.last_error??null,weather:row?.last_weather?JSON.parse(row.last_weather):[],devices,events:recent,schedule:schedule?JSON.parse(schedule.value):null,heartbeat:beat?JSON.parse(beat.value):null,pushReady:!!(env.VAPID_PUBLIC_KEY&&env.VAPID_PRIVATE_JWK),publicKey:env.VAPID_PUBLIC_KEY||null});
+  return json({enabled:!!row?.enabled,config:row?validateConfig(JSON.parse(row.config)):null,lastRun:row?.last_run??null,error:row?.last_error??null,weather:row?.last_weather?JSON.parse(row.last_weather):[],devices,events:recent,schedule:schedule?JSON.parse(schedule.value):null,heartbeat:beat?JSON.parse(beat.value):null,pushReady:!!(env.VAPID_PUBLIC_KEY&&env.VAPID_PRIVATE_JWK),publicKey:env.VAPID_PUBLIC_KEY||null});
  }
  if(path==='config'&&method==='PUT'){const body=await readBody(request),config=validateConfig(body.config),now=Date.now();await run(env.DB,'INSERT INTO coop_monitors(user_id,config,enabled,updated_at) VALUES(?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET config=excluded.config,enabled=excluded.enabled,updated_at=excluded.updated_at',user,JSON.stringify(config),body.enabled?1:0,now);if(!body.enabled||config.pauseUntil>now){await run(env.DB,"UPDATE coop_outbox SET status='cancelled' WHERE status IN ('queued','retry') AND event_id IN (SELECT id FROM coop_events WHERE user_id=? AND kind!='test')",user);await run(env.DB,"UPDATE coop_events SET status='cancelled' WHERE user_id=? AND status='queued' AND kind!='test'",user)}return json({ok:true})}
  if(path==='subscribe'&&method==='POST'){

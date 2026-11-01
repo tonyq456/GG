@@ -8,7 +8,7 @@ export function validateConfig(c){
  if(!Number.isFinite(c.directionSpeed)||c.directionSpeed<0||c.directionSpeed>150)throw Error('風速格式錯誤');
  if(![15,30,60].includes(Number(c.cooldown)))throw Error('提醒間隔格式錯誤');
  const pauseUntil=Number(c.pauseUntil)||0;if(pauseUntil>Date.now()+86400000||pauseUntil<0)throw Error('暫停時間不正確');
- return{sites,rules,combo:!!c.combo,sector,directionSpeed:c.directionSpeed,cooldown:Number(c.cooldown),pauseUntil,sound:!!c.sound,vibrate:!!c.vibrate};
+ return{sites,rules,sector,directionSpeed:c.directionSpeed,cooldown:Number(c.cooldown),pauseUntil,sound:!!c.sound,vibrate:!!c.vibrate};
 }
 export function ruleDecisions(results,previous,now,cooldown,paused){
  const alerts=[],recoveries=[],changes=[];for(const[key,active]of Object.entries(results)){if(active===null)continue;const old=previous[key]||{active:0,last_queued:0};let last=old.last_queued;if(active&&!paused&&(!old.active||!last||now-last>=cooldown)){alerts.push(key);last=now}if(!active&&old.active&&!paused)recoveries.push(key);changes.push({key,active:active?1:0,last_queued:last})}return{alerts,recoveries,changes};

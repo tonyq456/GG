@@ -1,7 +1,7 @@
 import{state,save,toast,renderRules,renderWeather,renderSites}from'./app.js';
 let cloud=null,deviceId=null,lastHash=null,syncTimer=null,busy=false;
 const $=s=>document.querySelector(s),stamp=t=>t?new Date(t).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false}):'尚未執行';
-const config=()=>({sites:state.sites,rules:state.rules,combo:state.combo,sector:state.sector,directionSpeed:state.directionSpeed,cooldown:state.cooldown,pauseUntil:state.pauseUntil,sound:state.sound,vibrate:state.vibrate});
+const config=()=>({sites:state.sites,rules:state.rules,sector:state.sector,directionSpeed:state.directionSpeed,cooldown:state.cooldown,pauseUntil:state.pauseUntil,sound:state.sound,vibrate:state.vibrate});
 async function api(path,method='GET',body){const r=await fetch('/api/coop/'+path,{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined,cache:'no-store',redirect:'error'});const d=await r.json();if(!r.ok)throw Error(d.error||'伺服器暫時無法連線');return d}
 function render(){
  if(!cloud)return;const installed=!!deviceId&&cloud.devices.some(d=>d.id===deviceId),schedule=cloud.schedule?.enabled,late=!cloud.heartbeat||Date.now()-cloud.heartbeat.at>90*60000;

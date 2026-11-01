@@ -1,3 +1,4 @@
+import{projectMercator,unprojectMercator}from'./map-geometry.mjs';
 import{defs,finite,direction,evaluate,extract}from'./engine.mjs';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fallback={sites:[{id:'fangyuan',name:'芳苑一場',lat:23.924,lon:120.32}],selected:'fangyuan',rules:Object.fromEntries(defs.map(d=>[d.id,{on:false,value:d.value}])),combo:false,sector:'',directionSpeed:8,sound:false,vibrate:false,systemNotify:false,cooldown:30,pauseUntil:0,logs:[],states:{}};
@@ -31,9 +32,39 @@ function renderChart(){if(!data||!values){$('#chart').className='chart-empty';$(
 $$('[data-chart]').forEach(b=>b.onclick=()=>{chartKey=b.dataset.chart;$$('[data-chart]').forEach(x=>x.classList.toggle('selected',x===b));renderChart()});
 function renderLogs(){const filter=$('#historyFilter').value,logs=state.logs.filter(l=>filter==='all'||l.type===filter);$('#historyList').innerHTML=logs.length?logs.map(l=>`<div class="log ${esc(l.type)}"><span class="log-symbol">${l.type==='recovery'?'✓':l.type==='test'?'♧':'!'}</span><div><b>${esc(l.title)}</b><p>${esc(l.site)} · ${esc(l.body)}</p></div><time>${dateText(l.time)}</time></div>`).join(''):'<div class="empty">◷<br>這裡還沒有紀錄<br><small>啟用警戒或測試提醒後，紀錄會顯示在這裡。</small></div>'}
 $('#historyFilter').onchange=renderLogs;$('#exportBtn').onclick=()=>{const blob=new Blob([JSON.stringify(state.logs,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='晴舍警報紀錄.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),5000)};
-let center={lat:23.924,lon:120.32},zoom=12,drag=null;const scale=()=>256*2**zoom;function project(lat,lon){const n=scale(),s=Math.sin(Math.max(-85,Math.min(85,lat))*Math.PI/180);return{x:(lon+180)/360*n,y:(.5-Math.log((1+s)/(1-s))/(4*Math.PI))*n}}function unproject(x,y){const n=scale();return{lon:((x/n*360+180)%360+360)%360-180,lat:Math.max(-85,Math.min(85,Math.atan(Math.sinh(Math.PI*(1-2*y/n)))*180/Math.PI))}}
-function mapInputs(){$('#latitude').value=center.lat.toFixed(6);$('#longitude').value=center.lon.toFixed(6)}function renderMap(){const m=$('#map'),w=m.clientWidth,h=m.clientHeight;if(!w)return;const p=project(center.lat,center.lon),left=p.x-w/2,top=p.y-h/2,tiles=[];for(let x=Math.floor(left/256);x<=Math.floor((left+w)/256);x++)for(let y=Math.floor(top/256);y<=Math.floor((top+h)/256);y++){const n=2**zoom;if(y<0||y>=n)continue;tiles.push(`<img draggable="false" alt="" src="https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/${zoom}/${y}/${((x%n)+n)%n}" style="left:${x*256-left}px;top:${y*256-top}px">`)}$('#tiles').innerHTML=tiles.join('')}
-const map=$('#map');map.onpointerdown=e=>{if(e.target.closest('button,a'))return;drag={x:e.clientX,y:e.clientY,p:project(center.lat,center.lon),moved:false};map.setPointerCapture(e.pointerId)};map.onpointermove=e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.abs(dx)+Math.abs(dy)>5)drag.moved=true;center=unproject(drag.p.x-dx,drag.p.y-dy);mapInputs();renderMap()};map.onpointerup=e=>{if(!drag)return;if(!drag.moved){const r=map.getBoundingClientRect(),p=project(center.lat,center.lon);center=unproject(p.x+e.clientX-r.left-r.width/2,p.y+e.clientY-r.top-r.height/2)}drag=null;mapInputs();renderMap()};map.onpointercancel=()=>drag=null;$('#zoomIn').onclick=()=>{zoom=Math.min(18,zoom+1);renderMap()};$('#zoomOut').onclick=()=>{zoom=Math.max(3,zoom-1);renderMap()};new ResizeObserver(()=>renderMap()).observe(map);
+let center={lat:23.924,lon:120.32},zoom=12,drag=null;function project(lat,lon){return projectMercator(lat,lon,zoom)}function unproject(x,y){return unprojectMercator(x,y,zoom)}
+function mapInputs(){$('#latitude').value=center.lat.toFixed(6);$('#longitude').value=center.lon.toFixed(6)}
+const tileNodes=new Map();let mapFrame=0;
+function renderMap(){
+ const m=$('#map'),w=m.clientWidth,h=m.clientHeight;if(!w||!h)return;
+ const p=project(center.lat,center.lon),left=p.x-w/2,top=p.y-h/2,n=2**zoom,needed=new Set(),layer=$('#tiles');
+ layer.style.transform='';
+ // Reuse loaded image nodes and preload a one-tile margin. Never clear the layer while panning.
+ for(let x=Math.floor(left/256)-1;x<=Math.floor((left+w)/256)+1;x++)for(let y=Math.floor(top/256)-1;y<=Math.floor((top+h)/256)+1;y++){
+  if(y<0||y>=n)continue;const key=zoom+':'+x+':'+y;needed.add(key);let img=tileNodes.get(key);
+  if(!img){img=document.createElement('img');img.draggable=false;img.alt='';img.decoding='async';img.src=`https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/${zoom}/${y}/${((x%n)+n)%n}`;tileNodes.set(key,img);layer.append(img)}
+  img.style.left=(x*256-left)+'px';img.style.top=(y*256-top)+'px';
+ }
+ for(const[key,img]of tileNodes)if(!needed.has(key)){img.remove();tileNodes.delete(key)}
+}
+const map=$('#map');
+map.onpointerdown=e=>{
+ if(e.target.closest('button,a')||drag||e.isPrimary===false||e.button>0)return;
+ drag={id:e.pointerId,x:e.clientX,y:e.clientY,dx:0,dy:0,p:project(center.lat,center.lon),moved:false};map.setPointerCapture(e.pointerId);e.preventDefault();
+};
+map.onpointermove=e=>{
+ if(!drag||drag.id!==e.pointerId)return;drag.dx=e.clientX-drag.x;drag.dy=e.clientY-drag.y;
+ if(Math.abs(drag.dx)+Math.abs(drag.dy)>5)drag.moved=true;
+ if(!mapFrame)mapFrame=requestAnimationFrame(()=>{mapFrame=0;if(drag)$('#tiles').style.transform=`translate3d(${drag.dx}px,${drag.dy}px,0)`});
+};
+function finishMapDrag(e,cancelled=false){
+ if(!drag||drag.id!==e.pointerId)return;const gesture=drag;drag=null;if(mapFrame){cancelAnimationFrame(mapFrame);mapFrame=0}
+ if(gesture.moved)center=unproject(gesture.p.x-gesture.dx,gesture.p.y-gesture.dy);
+ else if(!cancelled){const r=map.getBoundingClientRect();center=unproject(gesture.p.x+e.clientX-r.left-r.width/2,gesture.p.y+e.clientY-r.top-r.height/2)}
+ if(map.hasPointerCapture(e.pointerId))map.releasePointerCapture(e.pointerId);mapInputs();renderMap();
+}
+map.onpointerup=e=>finishMapDrag(e);map.onpointercancel=e=>finishMapDrag(e,true);map.onlostpointercapture=e=>finishMapDrag(e,true);
+$('#zoomIn').onclick=()=>{zoom=Math.min(18,zoom+1);renderMap()};$('#zoomOut').onclick=()=>{zoom=Math.max(3,zoom-1);renderMap()};new ResizeObserver(()=>{if(!drag)renderMap()}).observe(map);
 ['latitude','longitude'].forEach(id=>$('#'+id).onchange=()=>{if(!$('#latitude').checkValidity()||!$('#longitude').checkValidity())return;center={lat:Number($('#latitude').value),lon:Number($('#longitude').value)};renderMap()});$('#locateBtn').onclick=()=>{if(!navigator.geolocation)return toast('此瀏覽器不支援定位，請在地圖選點');navigator.geolocation.getCurrentPosition(p=>{center={lat:p.coords.latitude,lon:p.coords.longitude};zoom=14;mapInputs();renderMap();toast('已選取目前位置，請命名並儲存')},()=>toast('定位未成功，請開啟權限或直接選點'),{timeout:10000})};$('#placeForm').onsubmit=e=>{e.preventDefault();const name=$('#placeName').value.trim();if(!name)return toast('請輸入場區名稱');const s={id:crypto.randomUUID(),name,lat:Number($('#latitude').value),lon:Number($('#longitude').value)};state.sites.push(s);$('#placeName').value='';selectSite(s.id);toast('場區已新增');show('overview')};
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e});$('#installBtn').onclick=async()=>{if(installPrompt){await installPrompt.prompt();installPrompt=null}else $('#installDialog').showModal()};$('#closeInstall').onclick=()=>$('#installDialog').close();if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').then(r=>sw=r).catch(()=>{});
 setInterval(()=>{$('#clock').textContent=dateText(Date.now(),{weekday:'short'});renderStatus()},60000);$('#clock').textContent=dateText(Date.now(),{weekday:'short'});setInterval(fetchWeather,600000);document.addEventListener('visibilitychange',()=>{if(!document.hidden&&Date.now()-received>600000)fetchWeather()});renderSites();renderRules();renderLogs();renderWeather();fetchWeather();

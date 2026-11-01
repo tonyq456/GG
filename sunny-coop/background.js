@@ -27,7 +27,7 @@ $('#cloudSave').onclick=task(async()=>{await sync();toast('場區與警戒設定
 $('#cloudDisable').onclick=task(async()=>{await sync(false);toast('已停止伺服器監測；所有裝置不再收到新的氣象警報')});
 $('#cloudRefresh').onclick=task(refresh);
 $('#cloudCheck').onclick=task(async()=>{await api('check','POST',{});await refresh();toast(cloud.enabled?'伺服器檢查已完成':'尚未啟用背景監測，請先啟用')});
-$('#pushTest').onclick=task(async()=>{const d=await api('test','POST',{id:deviceId});await refresh();toast(d.delivery.accepted?'推播服務已接受測試通知，請確認手機通知列。':'測試通知尚未送出，請查看裝置狀態。')});
+$('#pushTest').onclick=task(async()=>{const d=await api('test','POST',{id:deviceId});await refresh();toast(d.delivery.accepted?'推播服務已接受測試通知，請確認手機通知列。':'測試未送出：'+(cloud?.devices.find(x=>x.id===deviceId)?.last_error||'請稍後重試'))});
 $('#cloudUnsubscribe').onclick=task(async()=>{await api('unsubscribe','POST',{id:deviceId});const reg=await navigator.serviceWorker.ready;await(await reg.pushManager.getSubscription())?.unsubscribe();deviceId=null;localStorage.removeItem('coop-push-device');await refresh();toast('已取消此裝置的推播訂閱')});
 $('#cloudLoad').onclick=task(async()=>{if(!cloud?.config)return;Object.assign(state,cloud.config);if(!state.sites.some(s=>s.id===state.selected))state.selected=state.sites[0].id;lastHash=JSON.stringify(config());save();renderRules();renderSites();renderWeather();toast('已載入雲端場區與警戒設定；請更新天氣')});
 window.addEventListener('coop:local-save',()=>{if(!cloud?.enabled||lastHash===null||lastHash===JSON.stringify(config()))return;clearTimeout(syncTimer);syncTimer=setTimeout(()=>sync().catch(e=>toast('雲端設定未儲存：'+e.message)),1000)});

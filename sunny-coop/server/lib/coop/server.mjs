@@ -1,6 +1,6 @@
 import{validateConfig,ruleDecisions}from'./config.mjs';
 import{defs,evaluate,extract,direction,finite}from'./engine.mjs';
-import{sendPush,validateSubscription}from'./push.mjs';
+import{sendPush,validateSubscription,pushSelfCheck}from'./push.mjs';
 const json=(v,status=200)=>new Response(JSON.stringify(v),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}});
 const names={...Object.fromEntries(defs.map(d=>[d.id,d.name])),direction:'迎風提醒'};
 const format=v=>finite(v)?String(Math.round(v*10)/10):'缺值';
@@ -22,9 +22,9 @@ export async function flushOutbox(env,fetcher=fetch){
   let result;try{
    const payload=JSON.parse(job.payload);if(now-payload.createdAt>3600000){await run(db,"UPDATE coop_outbox SET status='expired',last_error='通知已超過一小時' WHERE id=?",job.id);totals.expired++;continue}
    result=await sendPush(JSON.parse(job.subscription),payload,env,fetcher);
-  }catch{result={accepted:false,expired:false,status:0}}
+  }catch(e){result={accepted:false,expired:false,status:0,error:/^推播(內容加密|簽章|服務連線)失敗（[A-Za-z]+Error）/.test(e?.message||'')?e.message:'推播資料或處理失敗'}}
   if(result.accepted){totals.accepted++;await db.batch([stmt(db,"UPDATE coop_outbox SET status='accepted',attempts=attempts+1,last_error=NULL WHERE id=?",job.id),stmt(db,'UPDATE coop_subscriptions SET last_accepted=?,last_error=NULL WHERE id=?',now,job.subscription_id)])}
-  else{totals.failed++;const error=result.status?'推播服務回應 HTTP '+result.status:'推播連線或加密失敗';await db.batch([stmt(db,'UPDATE coop_outbox SET status=?,attempts=attempts+1,next_attempt=?,last_error=? WHERE id=?',result.expired?'expired':job.attempts>=2?'failed':'retry',now+300000,error,job.id),stmt(db,'UPDATE coop_subscriptions SET last_error=? WHERE id=?',error,job.subscription_id)]);if(result.expired){await run(db,'DELETE FROM coop_subscriptions WHERE id=?',job.subscription_id);await run(db,"UPDATE coop_outbox SET status='expired' WHERE subscription_id=? AND status IN ('queued','retry')",job.subscription_id)}}
+  else{totals.failed++;const error=result.status?'推播服務回應 HTTP '+result.status:result.error||'推播連線或加密失敗';await db.batch([stmt(db,'UPDATE coop_outbox SET status=?,attempts=attempts+1,next_attempt=?,last_error=? WHERE id=?',result.expired?'expired':job.attempts>=2?'failed':'retry',now+300000,error,job.id),stmt(db,'UPDATE coop_subscriptions SET last_error=? WHERE id=?',error,job.subscription_id)]);if(result.expired){await run(db,'DELETE FROM coop_subscriptions WHERE id=?',job.subscription_id);await run(db,"UPDATE coop_outbox SET status='expired' WHERE subscription_id=? AND status IN ('queued','retry')",job.subscription_id)}}
  }
  await run(db,"UPDATE coop_events SET status=CASE WHEN EXISTS(SELECT 1 FROM coop_outbox o WHERE o.event_id=coop_events.id AND o.status='accepted') THEN 'accepted' WHEN EXISTS(SELECT 1 FROM coop_outbox o WHERE o.event_id=coop_events.id AND o.status IN ('queued','retry')) THEN 'queued' ELSE 'failed' END WHERE status='queued'");
  return totals;
@@ -71,6 +71,8 @@ export async function route(request,env,ctx){
  if(path==='run'&&method==='POST')return json(await monitor(env,{userId:user||null}));
  if(path==='heartbeat'&&method==='GET'){const row=await stmt(env.DB,"SELECT value FROM coop_runtime WHERE id='heartbeat'").first();return json({heartbeat:row?JSON.parse(row.value):null})}
  if(path==='schedule'&&method==='POST'&&!user){const body=await readBody(request);if(typeof body.id!=='string'||body.id.length>200)throw Error('排程格式錯誤');await run(env.DB,"INSERT INTO coop_runtime(id,value,lock_until) VALUES('schedule',?,0) ON CONFLICT(id) DO UPDATE SET value=excluded.value",JSON.stringify({id:body.id,intervalMinutes:60,enabled:body.enabled===true,updatedAt:Date.now()}));return json({ok:true})}
+ if(path==='push-retry'&&method==='POST'&&!user){const now=Date.now();await run(env.DB,"UPDATE coop_outbox SET next_attempt=? WHERE status IN ('queued','retry') AND id IN (SELECT o.id FROM coop_outbox o JOIN coop_events e ON e.id=o.event_id WHERE e.kind='test' AND e.created_at>? AND e.created_at=(SELECT MAX(e2.created_at) FROM coop_events e2 JOIN coop_outbox o2 ON o2.event_id=e2.id WHERE o2.subscription_id=o.subscription_id AND e2.kind='test'))",now,now-3600000);return json(await flushOutbox(env))}
+ if(path==='diagnostics'&&method==='GET'&&!user){const cryptoCheck=await pushSelfCheck(env);const devices=(await stmt(env.DB,'SELECT last_accepted,last_error FROM coop_subscriptions LIMIT 10').all()).results;const events=(await stmt(env.DB,'SELECT kind,status,created_at FROM coop_events ORDER BY created_at DESC LIMIT 10').all()).results;let networkProbe;try{const r=await fetch('https://fcm.googleapis.com/',{method:'HEAD',redirect:'manual',signal:AbortSignal.timeout(5000)});networkProbe={status:r.status}}catch(e){networkProbe={error:String(e?.message||e?.name||'Error').replace(/https?:\/\/[^\s\"']+/g,'[服務網址]').slice(0,200)}}return json({cryptoCheck,networkProbe,devices,events})}
  if(!user)return json({error:'請登入後設定個人監測'},401);
  if(path==='status'&&method==='GET'){
   const row=await stmt(env.DB,'SELECT * FROM coop_monitors WHERE user_id=?',user).first();

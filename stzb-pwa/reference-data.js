@@ -40,7 +40,21 @@ const growthCards=[
 {name:'曹操',variant:'魏·五星·騎',initial:{attack:80,defense:107,strategy:90,speed:88,siege:6},growth:{attack:1.28,defense:2.95,strategy:1.59,speed:1.26,siege:1.40},source:'https://www.juxia.com/sjwy/zixun-24638.html',status:'公開歷史資料，台服版本未核對'},
 {name:'孫堅',variant:'吳·五星·騎',initial:{attack:89,defense:93,strategy:67,speed:86,siege:4},growth:{attack:1.29,defense:1.09,strategy:0.61,speed:1.13,siege:0.25},source:'https://kknews.cc/game/686yr3l.html',status:'2016年公開歷史資料，台服版本未核對'}
 ];
+// Partial records: keep separately; never fabricate missing growth or initial stats.
+const partialCards=[
+{name:'曹操',variant:'漢·四星·騎',growth:{attack:.8,defense:.95,strategy:.83,speed:.9,siege:.11},source:'https://forum.gamer.com.tw/C.php?bsn=30108&snA=3341',status:'台灣玩家歷史攻略：僅成長值'},
+{name:'孫堅',variant:'漢·四星·騎',growth:{attack:1.07,defense:.89,strategy:.47,speed:1,siege:.31},source:'https://forum.gamer.com.tw/C.php?bsn=30108&snA=3341',status:'台灣玩家歷史攻略：僅成長值'},
+{name:'劉備',variant:'漢·四星·步',growth:{attack:.73,defense:.79,strategy:.62,speed:.39,siege:.97},source:'https://forum.gamer.com.tw/C.php?bsn=30108&snA=3341',status:'台灣玩家歷史攻略：僅成長值'},
+{name:'司馬懿',variant:'漢·五星',growth:{attack:.76,defense:1.43,strategy:1.96,speed:.57,siege:.57},source:'https://forum.gamer.com.tw/C.php?bsn=30108&snA=3341',status:'台灣玩家歷史攻略：僅成長值'},
+{name:'袁紹',variant:'漢·五星',growth:{attack:1.3,defense:1.63,strategy:1.05,speed:.57,siege:1.96},source:'https://forum.gamer.com.tw/Co.php?bsn=30108&sn=9684',status:'台灣玩家歷史攻略：僅成長值'},
+{name:'靈帝',variant:'漢·五星',growth:{attack:1.48,defense:1.85,strategy:1.59,speed:.94,siege:1.12},source:'https://forum.gamer.com.tw/Co.php?bsn=30108&sn=9684',status:'台灣玩家歷史攻略：僅成長值'},
+{name:'張遼',variant:'魏·五星·騎',initial:{attack:91,defense:94,strategy:83,speed:105,siege:3},source:'https://www.daisangoku.com/m/herolist/100027.html',status:'日本官方歷史圖鑑：僅初始值'},
+{name:'徐庶',variant:'蜀·騎',initial:{attack:80,defense:82,strategy:97,speed:88,siege:4},source:'https://www.daisangoku.com/herolist/100067.html',status:'日本官方歷史圖鑑：僅初始值'},
+{name:'張奐',variant:'漢·四星·步',initial:{attack:78,defense:79,strategy:88,speed:33,siege:20},source:'https://3g.d.cn/db/detail_shuaituzhibing_19052.html',status:'中國歷史圖鑑：僅初始值'},
+{name:'孫策',variant:'吳·四星·騎',initial:{attack:95,defense:71,strategy:71,speed:76,siege:2},source:'https://3g.d.cn/db/detail_shuaituzhibing_19237.html',status:'中國歷史圖鑑：僅初始值'}
+];
+const cardCatalog=[...growthCards,...partialCards].map(card=>({...card,complete:!!(card.initial&&card.growth)}));
 const calculateAtLevel=(card,level=40)=>Object.fromEntries(Object.keys(card.initial).map(key=>[key,Math.round((card.initial[key]+(level-1)*card.growth[key])*100)/100]));
 for(const card of growthCards){if(heroes[card.name])heroes[card.name]={...heroes[card.name],...calculateAtLevel(card,40),variant:card.variant,initial:card.initial,growth:card.growth,source:card.source,status:card.status};}
-root.STZBReference={heroes,tactics,growthCards,calculateAtLevel,notice:'武將40級實際屬性依卡片版本、星級、進階、配點、兵種與賽季可能不同；未取得可靠數據時不顯示假數值。戰法參考值非台服現行保證值。'};
+root.STZBReference={heroes,tactics,growthCards,partialCards,cardCatalog,calculateAtLevel,notice:'武將40級實際屬性依卡片版本、星級、進階、配點、兵種與賽季可能不同；未取得可靠數據時不顯示假數值。戰法參考值非台服現行保證值。'};
 })(window);

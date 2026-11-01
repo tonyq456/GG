@@ -37,7 +37,10 @@ function stats(name,position){
  let h=2166136261;for(const ch of name){h=Math.imul(h^ch.codePointAt(0),16777619)>>>0;}
  return {attack:115+(h%57),defense:100+((h>>>7)%62),strategy:100+((h>>>14)%65),speed:65+((h>>>21)%45),position};
 }
-function simulate(team,op,r,verbose){
+const DEFAULT_CALIBRATION=Object.freeze({base:1080,offset:100,defenseFactor:1,troopReference:10000,variance:0.08});
+function normalizeCalibration(input={}){const out={...DEFAULT_CALIBRATION};for(const k of Object.keys(out)){const v=Number(input[k]);if(Number.isFinite(v)&&v>0)out[k]=v;}out.variance=Math.min(.3,Math.max(0,Number(input.variance??out.variance)));return out;}
+function damageEstimate(attack,defense,troops,skillRate=1,magic=false,params={}){const p=normalizeCalibration(params);const attackStat=Math.max(1,Number(attack)||1),defenseStat=Math.max(1,Number(defense)||1),remaining=Math.max(0,Number(troops)||0);const troopFactor=Math.sqrt(remaining/p.troopReference);const attributeFactor=(p.offset+attackStat)/(p.offset+defenseStat*p.defenseFactor);return p.base*troopFactor*attributeFactor*Math.max(0,skillRate);}
+function simulate(team,op,r,verbose,settings={}){const calibration=normalizeCalibration(settings);
  const log=[],write=s=>{if(verbose)log.push(s)};
  const make=(x,i)=>({name:x.name,tactics:x.tactics||[],...stats(x.name,i),hp:10000,damage:0,healing:0,disarm:0,silence:0,confuse:0,dot:0,bonus:0,shield:0,vulnerability:0,boost:0,double:0,counter:0,prepared:[],side:0});
  const A=team.map((x,i)=>make(x,i)),B=op.g.map((name,i)=>make({name,tactics:op.t[i]},i));B.forEach(x=>x.side=1);
@@ -45,9 +48,7 @@ function simulate(team,op,r,verbose){
  const pick=arr=>arr[Math.floor(r()*arr.length)];
  function hurt(a,b,power,magic=false,label='普通攻擊'){
   const offensive=magic?a.strategy:a.attack,defensive=magic?b.strategy:b.defense;
-  const ratio=Math.max(.25,offensive/(offensive+defensive*.72));
-  const troop=.35+.65*Math.sqrt(a.hp/10000);
-  const raw=1050*power*ratio*troop*(.92+r()*.16);
+  const raw=damageEstimate(offensive,defensive,a.hp,power,magic,calibration)*(1+(r()*2-1)*calibration.variance);
   const value=Math.max(1,Math.round(raw*(1+a.bonus+a.boost)*(1+b.vulnerability)*(1-b.shield)));
   b.hp=Math.max(0,b.hp-value);a.damage+=value;write((a.side?'敵':'我')+' '+a.name+' '+label+' → '+b.name+' -'+value+'（剩'+b.hp+'）');return value;
  }
@@ -105,5 +106,5 @@ function simulate(team,op,r,verbose){
  const ownHp=A.reduce((x,u)=>x+u.hp,0),enemyHp=B.reduce((x,u)=>x+u.hp,0);
  return {win:ownHp>enemyHp,draw:ownHp===enemyHp,ownHp,enemyHp,ownDamage:A.reduce((x,u)=>x+u.damage,0),enemyDamage:B.reduce((x,u)=>x+u.damage,0),rounds:8,units:A,enemyUnits:B,log};
 }
-global.BattleEngine={simulate,skill,version:'0.1-independent-experimental',warning:'非官方；屬性為代理值，計算與BorderHelper尚未對照驗證'};
+global.BattleEngine={simulate,skill,damageEstimate,normalizeCalibration,DEFAULT_CALIBRATION,version:'0.2-sqrt-approximation',warning:'平方根兵力與屬性比值均為可校準的非官方近似模型；武將屬性為代理值；與BorderHelper未比對'};
 })(window);

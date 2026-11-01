@@ -49,7 +49,7 @@ export async function monitor(env,{userId=null,force=false,fetcher=fetch}={}){
   if(decisions.recoveries.length)await queueEvent(db,row.user_id,'recovery','恢復正常：'+decisions.recoveries.map(k=>names[k]).join('、'),site.name+'：最新資料已未達上述警戒門檻。',c,now);
   if(batches.length)await db.batch(batches);
   // Clear the outage state only after a successful weather fetch.
-  await run(db,'DELETE FROM coop_rule_states WHERE id=?',prefix+'outage');observations.push({site:site.name,...v,alerts:decisions.alerts,unknown:Object.values(results).some(x=>x===null)});checked++;
+  await run(db,'DELETE FROM coop_rule_states WHERE id=?',prefix+'outage');observations.push({siteId:site.id,site:site.name,lat:site.lat,lon:site.lon,...v,alerts:decisions.alerts,unknown:Object.values(results).some(x=>x===null)});checked++;
  }catch{
   errors++;lastError='部分場區氣象資料無法更新，請確認現場狀況。';const key=row.user_id+':'+site.id+':outage',old=await stmt(db,'SELECT last_queued FROM coop_rule_states WHERE id=?',key).first();
   if(now>=c.pauseUntil&&(!old||now-old.last_queued>=21600000)){await queueEvent(db,row.user_id,'error','天氣資料中斷',site.name+'：無法取得新資料；舊數值不會解除警戒。',c,now);await run(db,'INSERT INTO coop_rule_states(id,user_id,active,last_queued) VALUES(?,?,1,?) ON CONFLICT(id) DO UPDATE SET last_queued=excluded.last_queued',key,row.user_id,now)}

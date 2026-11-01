@@ -24,3 +24,11 @@ gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
 APK 位於 `app/build/outputs/apk/debug/app-debug.apk`。儲存庫的 GitHub Actions 流程會在此專案更新時建置並提供 `sunny-coop-widget-apk` 成品。
 
 尚未完成實體三星手機測試，請在安裝後確認 4×2 顯示、拖曳與更新。
+
+## 1.2 雲端同步
+
+在設定按「登入／選擇雲端同步場區」，在內嵌網站登入與 Chrome 相同的 ChatGPT 帳號，儲存網頁雲端設定，再按「同步雲端設定與資料」、選擇場區、「使用所選場區並返回」。兩種尺寸共用所選場區。同步為唯讀，雲端門檻請在網頁修改；不啟用監測、不訂閱推播。
+
+背景以 WebView 的網站登入 Cookie 直接 GET 本站 `/api/coop/status`，不嵌入 Sites 管理憑證，不新增驗證系統，不使用 JavaScript 原生橋接。網站維持私人。Cookie 由 Android WebView 管理，不複製到設定或記錄，停用備份、檔案存取、混合內容與第三方 Cookie。雲端快照與網頁即時查詢可能有不同來源時間；以顯示時間為準。若網站登入過期或內嵌登入受阻，顯示同步失敗、重新登入說明，不退回預設座標冒充雲端資料。Chrome 登入狀態無法自動共用。
+
+本機模式仍可使用。WebView 登入、Cookie 授權及鎖屏背景更新尚待三星實機驗證；建置測試無法代表帳號登入流程已驗證。

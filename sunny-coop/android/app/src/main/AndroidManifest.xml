@@ -7,6 +7,7 @@
    <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
    <intent-filter><action android:name="android.appwidget.action.APPWIDGET_CONFIGURE"/></intent-filter>
   </activity>
+  <activity android:name=".CloudActivity" android:exported="false"/>
   <receiver android:name=".CoopWidget" android:exported="false" android:label="晴舍 4×2 氣象">
    <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE"/></intent-filter>
    <meta-data android:name="android.appwidget.provider" android:resource="@xml/coop_widget"/>

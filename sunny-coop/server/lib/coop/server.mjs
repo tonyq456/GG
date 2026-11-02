@@ -1,4 +1,4 @@
-import{weather}from'./weather.mjs';
+import{cwaWeather as weather}from'./cwa.mjs';
 import{validateConfig,ruleDecisions}from'./config.mjs';
 import{defs,evaluate,extract,direction,finite}from'./engine.mjs';
 import{sendPush,validateSubscription,pushSelfCheck}from'./push.mjs';
@@ -30,7 +30,7 @@ export async function flushOutbox(env,fetcher=fetch){
  await run(db,"UPDATE coop_events SET status=CASE WHEN EXISTS(SELECT 1 FROM coop_outbox o WHERE o.event_id=coop_events.id AND o.status='accepted') THEN 'accepted' WHEN EXISTS(SELECT 1 FROM coop_outbox o WHERE o.event_id=coop_events.id AND o.status IN ('queued','retry')) THEN 'queued' ELSE 'failed' END WHERE status='queued'");
  return totals;
 }
-export async function monitor(env,{userId=null,force=false,fetcher=fetch}={}){
+export async function monitor(env,{userId=null,force=false,fetcher=fetch,weatherReader=weather}={}){
  const db=env.DB,now=Date.now();const lockKey='monitor',lease=crypto.randomUUID();
  const lock=await stmt(db,'INSERT INTO coop_runtime (id,value,lock_until) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value,lock_until=excluded.lock_until WHERE coop_runtime.lock_until<? RETURNING id',lockKey,lease,now+300000,now).first();if(!lock)return{busy:true};
  let checked=0,errors=0;try{
@@ -41,9 +41,9 @@ export async function monitor(env,{userId=null,force=false,fetcher=fetch}={}){
  const configs=(await stmt(db,'SELECT * FROM coop_monitors WHERE enabled=1'+(userId?' AND user_id=?':'')+' LIMIT 20',...(userId?[userId]:[])).all()).results;
  for(const row of configs){if(!force&&row.last_run&&now-row.last_run<3000000)continue;const c=validateConfig(JSON.parse(row.config)),observations=[];let lastError=null;
  for(const site of c.sites){try{
-  const v=await weather(site,fetcher),results=evaluate(v,c),prefix=row.user_id+':'+site.id+':';const previous={};const saved=(await stmt(db,'SELECT * FROM coop_rule_states WHERE user_id=?',row.user_id).all()).results;for(const old of saved)if(old.id.startsWith(prefix))previous[old.id.slice(prefix.length)]=old;
+  const v=await weatherReader(fetcher),results=evaluate(v,c),prefix=row.user_id+':'+site.id+':';const previous={};const saved=(await stmt(db,'SELECT * FROM coop_rule_states WHERE user_id=?',row.user_id).all()).results;for(const old of saved)if(old.id.startsWith(prefix))previous[old.id.slice(prefix.length)]=old;
   const decisions=ruleDecisions(results,previous,now,c.cooldown*60000,now<c.pauseUntil);
-  const body=`${site.name}｜戶外 ${format(v.temp)}°C、${direction(v.direction)}風 ${format(v.wind)} m/s、下一小時降雨機率 ${format(v.rain)}%。`;
+  const body=`${site.name}｜氣象署芳苑鄉 ${format(v.temp)}°C、${direction(v.direction)}風 ${format(v.wind)} m/s、時段降雨機率 ${format(v.rain)}%。`;
   const batches=decisions.changes.map(s=>stmt(db,'INSERT INTO coop_rule_states(id,user_id,active,last_queued) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET active=excluded.active,last_queued=excluded.last_queued',prefix+s.key,row.user_id,s.active,s.last_queued));
   if(decisions.alerts.length)await queueEvent(db,row.user_id,'alert',decisions.alerts.map(k=>names[k]).join('、'),body,c,now);
   if(decisions.recoveries.length)await queueEvent(db,row.user_id,'recovery','恢復正常：'+decisions.recoveries.map(k=>names[k]).join('、'),site.name+'：最新資料已未達上述警戒門檻。',c,now);
@@ -72,9 +72,9 @@ export async function route(request,env,ctx){
  if(path==='heartbeat'&&method==='GET'){const row=await stmt(env.DB,"SELECT value FROM coop_runtime WHERE id='heartbeat'").first();return json({heartbeat:row?JSON.parse(row.value):null})}
  if(path==='schedule'&&method==='POST'&&!user){const body=await readBody(request);if(typeof body.id!=='string'||body.id.length>200)throw Error('排程格式錯誤');await run(env.DB,"INSERT INTO coop_runtime(id,value,lock_until) VALUES('schedule',?,0) ON CONFLICT(id) DO UPDATE SET value=excluded.value",JSON.stringify({id:body.id,intervalMinutes:60,enabled:body.enabled===true,updatedAt:Date.now()}));return json({ok:true})}
  if(path==='push-retry'&&method==='POST'&&!user){const now=Date.now();await run(env.DB,"UPDATE coop_outbox SET next_attempt=? WHERE status IN ('queued','retry') AND id IN (SELECT o.id FROM coop_outbox o JOIN coop_events e ON e.id=o.event_id WHERE e.kind='test' AND e.created_at>? AND e.created_at=(SELECT MAX(e2.created_at) FROM coop_events e2 JOIN coop_outbox o2 ON o2.event_id=e2.id WHERE o2.subscription_id=o.subscription_id AND e2.kind='test'))",now,now-3600000);return json(await flushOutbox(env))}
- if(path==='diagnostics'&&method==='GET'&&!user){let weatherProbe;try{const v=await weather({lat:23.924,lon:120.32},fetch,{full:true});weatherProbe={ok:true,time:v.current.time}}catch(e){weatherProbe={ok:false,error:String(e?.message||e?.name||'Error').replace(/https?:\/\/[^\s]+/g,'[服務網址]').slice(0,200)}}const cryptoCheck=await pushSelfCheck(env);const devices=(await stmt(env.DB,'SELECT last_accepted,last_error FROM coop_subscriptions LIMIT 10').all()).results;const events=(await stmt(env.DB,'SELECT kind,status,created_at FROM coop_events ORDER BY created_at DESC LIMIT 10').all()).results;let networkProbe;try{const r=await fetch('https://fcm.googleapis.com/',{method:'HEAD',redirect:'manual',signal:AbortSignal.timeout(5000)});networkProbe={status:r.status}}catch(e){networkProbe={error:String(e?.message||e?.name||'Error').replace(/https?:\/\/[^\s\"']+/g,'[服務網址]').slice(0,200)}}return json({cryptoCheck,networkProbe,weatherProbe,devices,events})}
+ if(path==='diagnostics'&&method==='GET'&&!user){let weatherProbe;try{const v=await weather(fetch,{full:true});weatherProbe={ok:true,time:v.current.time}}catch(e){weatherProbe={ok:false,error:String(e?.message||e?.name||'Error').replace(/https?:\/\/[^\s]+/g,'[服務網址]').slice(0,200)}}const cryptoCheck=await pushSelfCheck(env);const devices=(await stmt(env.DB,'SELECT last_accepted,last_error FROM coop_subscriptions LIMIT 10').all()).results;const events=(await stmt(env.DB,'SELECT kind,status,created_at FROM coop_events ORDER BY created_at DESC LIMIT 10').all()).results;let networkProbe;try{const r=await fetch('https://fcm.googleapis.com/',{method:'HEAD',redirect:'manual',signal:AbortSignal.timeout(5000)});networkProbe={status:r.status}}catch(e){networkProbe={error:String(e?.message||e?.name||'Error').replace(/https?:\/\/[^\s\"']+/g,'[服務網址]').slice(0,200)}}return json({cryptoCheck,networkProbe,weatherProbe,devices,events})}
  if(!user)return json({error:'請登入後設定個人監測'},401);
- if(path==='weather'&&method==='GET'){const lat=Number(url.searchParams.get('lat')),lon=Number(url.searchParams.get('lon'));if(!url.searchParams.has('lat')||!url.searchParams.has('lon')||!finite(lat)||!finite(lon)||Math.abs(lat)>85||Math.abs(lon)>180)return json({error:'座標格式錯誤'},400);try{return json(await weather({lat,lon},fetch,{full:true}))}catch{return json({error:'天氣來源查詢未成功，已完成本輪重試；請稍後再試。'},503)}}
+ if(path==='weather'&&method==='GET'){const lat=Number(url.searchParams.get('lat')),lon=Number(url.searchParams.get('lon'));if(!url.searchParams.has('lat')||!url.searchParams.has('lon')||!finite(lat)||!finite(lon)||Math.abs(lat)>85||Math.abs(lon)>180)return json({error:'座標格式錯誤'},400);try{return json(await weather(fetch,{full:true}))}catch{return json({error:'天氣來源查詢未成功，已完成本輪重試；請稍後再試。'},503)}}
  if(path==='status'&&method==='GET'){
   const row=await stmt(env.DB,'SELECT * FROM coop_monitors WHERE user_id=?',user).first();
   const devices=(await stmt(env.DB,'SELECT id,created_at,last_accepted,last_error FROM coop_subscriptions WHERE user_id=?',user).all()).results;

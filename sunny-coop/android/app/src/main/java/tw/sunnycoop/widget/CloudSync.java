@@ -16,7 +16,7 @@ final class CloudSync {
   SharedPreferences p=prefs(c);CloudModel model=CloudModel.select(data,p.getString("siteId",""));JSONObject site=model.site,config=data.getJSONObject("config");SharedPreferences.Editor e=p.edit().putString("siteId",site.getString("id")).putString("name",site.getString("name")).putLong("fetched",System.currentTimeMillis()).putString("error","").putString("cloudState",data.optBoolean("enabled")?"雲端監測":"雲端監測未啟用").putLong("pauseUntil",config.optLong("pauseUntil",0));
   for(String key:new String[]{"high","low","wind","rain"}){JSONObject rule=config.getJSONObject("rules").getJSONObject(key);e.putBoolean(key+"On",rule.getBoolean("on")).putFloat(key,(float)rule.getDouble("value"));}
   String sector=config.optString("sector","");e.putInt("sector",sector.isEmpty()?-1:Integer.parseInt(sector)).putFloat("directionSpeed",(float)config.getDouble("directionSpeed"));
-  if(model.observation==null)e.remove("snapshot").putString("error","場區無新資料／請到網頁更新");else{JSONObject v=model.observation;e.putString("snapshot",new JSONObject().put("source",v.opt("time")).put("temp",v.opt("temp")).put("wind",v.opt("wind")).put("dir",v.opt("direction")).put("rain",v.opt("rain")).toString());}
+  if(model.observation==null)e.remove("snapshot").putString("error","場區無新資料／請到網頁更新");else{JSONObject v=model.observation;e.putString("snapshot",new JSONObject().put("source",v.opt("time")).put("temp",v.opt("temp")).put("wind",v.opt("wind")).put("dir",v.opt("direction")).put("rain",v.opt("rain")).put("windText",v.opt("windText")).put("rainTime",v.opt("rainTime")).put("rainEnd",v.opt("rainEnd")).toString());}
   e.apply();
  }
 }
